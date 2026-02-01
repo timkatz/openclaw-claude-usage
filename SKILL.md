@@ -1,45 +1,54 @@
 ---
 name: claude-max-usage
-description: Generate Claude usage reports for OpenClaw. Reports both subscription usage (Max/Pro via ccusage) and API costs (via Admin API). Use when asked about Claude usage, costs, limits, or utilization. Requires Claude Code CLI installed and authenticated in the container.
+description: Generate Claude usage reports for OpenClaw. Reports global account usage (Max/Pro subscription limits via /usage command) and optionally API costs (via Admin API). Use when asked about Claude usage, costs, limits, or utilization.
 ---
 
 # Claude Usage Reporting for OpenClaw
 
-Report Claude usage across both billing systems.
+Report Claude usage from within OpenClaw.
 
 ## Prerequisites
 
-Before using this skill, ensure:
 1. Claude Code CLI installed: `npm install -g @anthropic-ai/claude-code`
-2. ccusage installed: `npm install -g ccusage`
-3. Auth files present: `~/.claude/.credentials.json`
-4. Admin API key set: `CLAUDE_ADMIN_KEY` env var
+2. Auth files present: `~/.claude/.credentials.json`
+3. (Optional) Admin API key: `CLAUDE_ADMIN_KEY` env var for API cost reporting
 
-## Two Separate Systems
+## Global Account Usage (Claude Max/Pro)
 
-| System | Command | Output |
-|--------|---------|--------|
-| Subscription (Max/Pro) | `ccusage daily` | Tokens + theoretical $ |
-| API (pay-per-use) | Admin API curl | Actual $ costs |
+Shows usage across your **entire Claude account** — all devices, web, mobile, desktop.
 
-## Subscription Usage
+### Getting Usage
 
-Run ccusage for historical token data:
+The `/usage` command only works interactively. Run Claude Code with PTY:
 
-```bash
-# Daily
-ccusage daily --since 20260101
+```javascript
+// Start claude interactively
+exec({ command: "claude", pty: true, yieldMs: 5000 })
 
-# Weekly  
-ccusage weekly
+// Send /usage command
+process({ action: "send-keys", sessionId: "...", literal: "/usage" })
+process({ action: "send-keys", sessionId: "...", keys: ["Enter"] })
 
-# Monthly
-ccusage monthly
+// Poll and parse output
+process({ action: "poll", sessionId: "..." })
+// Look for: "Current session: X% used", "Current week (all models): X% used"
+
+// Exit cleanly
+process({ action: "send-keys", sessionId: "...", literal: "/exit" })
+process({ action: "send-keys", sessionId: "...", keys: ["Enter"] })
 ```
 
-**Note:** `/usage` command only works interactively in Claude Code, not via scripts.
+### Output Format
 
-## API Usage
+```
+Current session:           X% used (resets in Xh)
+Current week (all models): X% used (resets [date])
+Current week (Sonnet only): X% used (resets [date])
+```
+
+## API Usage (Optional)
+
+If you also use the Anthropic API directly for your own applications:
 
 ```bash
 curl "https://api.anthropic.com/v1/organizations/cost_report?starting_at=YYYY-MM-DD" \
@@ -47,43 +56,35 @@ curl "https://api.anthropic.com/v1/organizations/cost_report?starting_at=YYYY-MM
   --header "x-api-key: $CLAUDE_ADMIN_KEY"
 ```
 
-**Known bug:** API returns values 100x higher than Console. Divide by 100.
+**Known bug:** API may return values 100x higher than Console. Divide by 100 if needed.
+
+## What About ccusage?
+
+`ccusage` only shows Claude Code sessions from **this specific container** — useful if OpenClaw does its own "vibe coding" tasks. It does NOT show global account usage.
+
+For global account limits, use `/usage` as described above.
 
 ## Report Format
 
-Use ASCII bar charts, not tables:
+Use ASCII bar charts:
 
 ```
 📊 Claude Usage Report — [date]
 
-**Subscription (Claude Max):**
-[date] : ██████████░░░░░░░░░░ $X.XX
-         XX,XXX tokens
+**Account Limits (Claude Max):**
+• Session: 11% used (resets in 6h)
+• Week (all models): 30% used (resets Feb 6)
 
-**API Usage:**
-[date] : ██░░░░░░░░░░░░░░░░░░ $X.XX
-
-**Combined:** $X.XX theoretical
+**API Costs:** (if applicable)
+[date] : ██░░░░░░░░░░░░░░░░░░ $0.03
 ```
 
-## For Current Limits
+## Cron Setup
 
-To get live `/usage` data, run claude interactively with PTY:
+Create an OpenClaw cron job that:
+1. Runs `claude` with PTY
+2. Sends `/usage` and captures output
+3. Optionally pulls API costs
+4. Formats and posts report
 
-```javascript
-exec({ command: "claude", pty: true })
-// send-keys: "/usage", then "Enter"
-// parse output for percentages
-```
-
-## Container Setup
-
-If auth is missing, the container needs:
-```bash
-# From host:
-docker cp ~/.claude <container>:/home/node/.claude
-
-# Or volume mount in docker-compose:
-volumes:
-  - ./host/.claude:/home/node/.claude
-```
+See README.md for full cron job example.
