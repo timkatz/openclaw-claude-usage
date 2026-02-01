@@ -1,79 +1,76 @@
 ---
 name: claude-max-usage
-description: Generate Claude Max subscription utilization reports via the Anthropic Admin API. Use when asked to track Claude usage, generate cost reports, show API spending, or analyze Claude Max ROI. Requires CLAUDE_ADMIN_KEY environment variable.
+description: Generate Claude usage reports for both subscription plans (Max/Pro) and API usage. Use when asked to track Claude usage, show costs, check limits, or analyze utilization. Note: Subscription usage (% limits) and API usage ($ costs) are tracked separately by Anthropic.
 ---
 
-# Claude Max Usage Reporting
+# Claude Usage Reporting
 
-Generate utilization reports for Claude Max subscriptions showing theoretical API costs vs the flat monthly rate.
+Generate utilization reports for Claude. **Important:** Anthropic has two separate systems:
 
-## Prerequisites
+1. **Subscription (Max/Pro)** — Usage tracked as % of weekly limits
+2. **API (pay-per-use)** — Usage tracked as $ costs
 
-1. **Admin API Key** — Get from https://console.anthropic.com → Settings → Admin API Keys
-2. **Environment Variable** — Set `CLAUDE_ADMIN_KEY` with your admin key
+## Subscription Usage (Claude Max/Pro)
 
-## Quick Start
+For personal subscription plans. Shows % of weekly limits used.
 
-Run the bundled script:
-
+**Interactive method (Claude Code):**
 ```bash
-./scripts/usage-report.sh [days]
+claude
+# Then type: /usage
 ```
 
-- Default: 7 days
-- For monthly: `./scripts/usage-report.sh 30`
+**Historical method (ccusage):**
+```bash
+npx ccusage@latest daily --since 20260101
+```
 
-## API Details
+**Output format:**
+```
+Current session:           11% used
+Current week (all models): 30% used
+Current week (Sonnet):     1% used
+```
+
+**Note:** `/usage` is interactive only — cannot be automated via `claude -p`.
+
+## API Usage (Pay-Per-Use)
+
+For direct API calls. Shows actual $ costs.
+
+**Requires:** `CLAUDE_ADMIN_KEY` environment variable (Admin API key from Console)
 
 **Endpoint:**
 ```bash
-curl -s "https://api.anthropic.com/v1/organizations/cost_report?starting_at=YYYY-MM-DD" \
+curl "https://api.anthropic.com/v1/organizations/cost_report?starting_at=YYYY-MM-DD" \
   --header "anthropic-version: 2023-06-01" \
   --header "x-api-key: $CLAUDE_ADMIN_KEY"
 ```
 
-**Response:** Paginated daily costs (7 days per page). Use `has_more` and `next_page` for pagination.
-
-**Note:** Returns "theoretical API cost" — what you'd pay without Max. Compare against $200/month to show ROI.
-
-## Report Format
-
-Use ASCII bar charts for visual appeal:
-
-```
-📊 Claude Max Utilization Report
-
-Last 7 Days:
-2026-01-25 : ██████████ $5.51
-2026-01-26 : █████████░ $5.28
-2026-01-27 : █████░░░░░ $2.80
-
-Weekly Total: $28.02
-Daily Average: $4.00
-Projected Monthly: $120.07
-
-Max Plan: $200/month
-📉 Under-utilizing (60% of plan value)
+**Or run bundled script:**
+```bash
+./scripts/usage-report.sh [days]
 ```
 
-**ASCII charts > markdown tables** — more readable in chat interfaces.
+**Output format (use ASCII charts):**
+```
+📊 Claude API Cost Report
 
-## Scheduling Recommendations
+2026-01-25 : ██████████ $0.06
+2026-01-26 : █████████░ $0.05
 
-| Report | Schedule | Content |
-|--------|----------|---------|
-| Daily | 8 AM local | Yesterday's usage, weekly running total |
-| Weekly | Mondays | Prior week breakdown, patterns |
-| Monthly | 1st of month | Full month, ROI analysis |
+Weekly Total: $0.21
+```
 
-## Interpreting Results
+## Report Formats
 
-- **>100% of plan value** = Max is saving money ✅
-- **60-100%** = Good utilization, room to use more
-- **<60%** = Consider if Max is worth it for this user
+**ASCII bar charts > markdown tables** — more readable in chat.
 
-## Limitations
+## Key Differences
 
-- Admin API shows aggregated costs, not per-workspace breakdown (workspace_id may be null)
-- Separate API keys (e.g., for production apps) may need separate admin keys
-- Data is delayed ~24 hours
+| Aspect | Subscription | API |
+|--------|--------------|-----|
+| Billing | Flat monthly | Per token |
+| Metric | % of limit | $ cost |
+| Data source | Local + /usage | Admin API |
+| Automation | Limited | Full API |
