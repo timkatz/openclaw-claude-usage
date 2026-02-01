@@ -1,76 +1,89 @@
 ---
 name: claude-max-usage
-description: Generate Claude usage reports for both subscription plans (Max/Pro) and API usage. Use when asked to track Claude usage, show costs, check limits, or analyze utilization. Note: Subscription usage (% limits) and API usage ($ costs) are tracked separately by Anthropic.
+description: Generate Claude usage reports for OpenClaw. Reports both subscription usage (Max/Pro via ccusage) and API costs (via Admin API). Use when asked about Claude usage, costs, limits, or utilization. Requires Claude Code CLI installed and authenticated in the container.
 ---
 
-# Claude Usage Reporting
+# Claude Usage Reporting for OpenClaw
 
-Generate utilization reports for Claude. **Important:** Anthropic has two separate systems:
+Report Claude usage across both billing systems.
 
-1. **Subscription (Max/Pro)** — Usage tracked as % of weekly limits
-2. **API (pay-per-use)** — Usage tracked as $ costs
+## Prerequisites
 
-## Subscription Usage (Claude Max/Pro)
+Before using this skill, ensure:
+1. Claude Code CLI installed: `npm install -g @anthropic-ai/claude-code`
+2. ccusage installed: `npm install -g ccusage`
+3. Auth files present: `~/.claude/.credentials.json`
+4. Admin API key set: `CLAUDE_ADMIN_KEY` env var
 
-For personal subscription plans. Shows % of weekly limits used.
+## Two Separate Systems
 
-**Interactive method (Claude Code):**
+| System | Command | Output |
+|--------|---------|--------|
+| Subscription (Max/Pro) | `ccusage daily` | Tokens + theoretical $ |
+| API (pay-per-use) | Admin API curl | Actual $ costs |
+
+## Subscription Usage
+
+Run ccusage for historical token data:
+
 ```bash
-claude
-# Then type: /usage
+# Daily
+ccusage daily --since 20260101
+
+# Weekly  
+ccusage weekly
+
+# Monthly
+ccusage monthly
 ```
 
-**Historical method (ccusage):**
-```bash
-npx ccusage@latest daily --since 20260101
-```
+**Note:** `/usage` command only works interactively in Claude Code, not via scripts.
 
-**Output format:**
-```
-Current session:           11% used
-Current week (all models): 30% used
-Current week (Sonnet):     1% used
-```
+## API Usage
 
-**Note:** `/usage` is interactive only — cannot be automated via `claude -p`.
-
-## API Usage (Pay-Per-Use)
-
-For direct API calls. Shows actual $ costs.
-
-**Requires:** `CLAUDE_ADMIN_KEY` environment variable (Admin API key from Console)
-
-**Endpoint:**
 ```bash
 curl "https://api.anthropic.com/v1/organizations/cost_report?starting_at=YYYY-MM-DD" \
   --header "anthropic-version: 2023-06-01" \
   --header "x-api-key: $CLAUDE_ADMIN_KEY"
 ```
 
-**Or run bundled script:**
+**Known bug:** API returns values 100x higher than Console. Divide by 100.
+
+## Report Format
+
+Use ASCII bar charts, not tables:
+
+```
+📊 Claude Usage Report — [date]
+
+**Subscription (Claude Max):**
+[date] : ██████████░░░░░░░░░░ $X.XX
+         XX,XXX tokens
+
+**API Usage:**
+[date] : ██░░░░░░░░░░░░░░░░░░ $X.XX
+
+**Combined:** $X.XX theoretical
+```
+
+## For Current Limits
+
+To get live `/usage` data, run claude interactively with PTY:
+
+```javascript
+exec({ command: "claude", pty: true })
+// send-keys: "/usage", then "Enter"
+// parse output for percentages
+```
+
+## Container Setup
+
+If auth is missing, the container needs:
 ```bash
-./scripts/usage-report.sh [days]
+# From host:
+docker cp ~/.claude <container>:/home/node/.claude
+
+# Or volume mount in docker-compose:
+volumes:
+  - ./host/.claude:/home/node/.claude
 ```
-
-**Output format (use ASCII charts):**
-```
-📊 Claude API Cost Report
-
-2026-01-25 : ██████████ $0.06
-2026-01-26 : █████████░ $0.05
-
-Weekly Total: $0.21
-```
-
-## Report Formats
-
-**ASCII bar charts > markdown tables** — more readable in chat.
-
-## Key Differences
-
-| Aspect | Subscription | API |
-|--------|--------------|-----|
-| Billing | Flat monthly | Per token |
-| Metric | % of limit | $ cost |
-| Data source | Local + /usage | Admin API |
-| Automation | Limited | Full API |
