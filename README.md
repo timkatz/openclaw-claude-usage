@@ -1,137 +1,150 @@
-# Claude Usage Reporting for OpenClaw
+# OpenClaw Claude Usage Skill
 
-Track and report Claude usage from within OpenClaw, covering both **subscription plans** (Max/Pro) and **API usage**.
+An OpenClaw skill for reporting Claude usage — both **subscription plans** (Max/Pro) and **API usage**.
 
-## Overview
+Ask your agent things like:
+- "How much Claude have I used this week?"
+- "Show my Claude Max usage"
+- "What are my API costs for January?"
 
-Anthropic has **two separate billing systems**:
+## Quick Start
 
-| System | Billing | What It Tracks |
-|--------|---------|----------------|
-| **Claude Max/Pro** | $20-200/month flat | All Claude usage across your account |
-| **Claude API** | Pay-per-token | Direct API calls from your applications |
+### 1. Install the Skill
 
-This skill enables OpenClaw to report on both.
+Copy `SKILL.md` to your OpenClaw skills directory, or point your agent to this repo.
+
+### 2. Set Up Claude Code (for subscription usage)
+
+```bash
+# Install Claude Code CLI in your container
+docker exec <container-name> npm install -g @anthropic-ai/claude-code
+
+# Authenticate (interactive)
+docker exec -it <container-name> claude
+# Follow OAuth flow, then /exit
+```
+
+### 3. (Optional) Set Up Admin API Key (for API costs)
+
+If you also use the Anthropic API directly:
+```bash
+CLAUDE_ADMIN_KEY=sk-ant-admin-...
+```
+
+That's it! Your agent can now report on Claude usage.
 
 ---
 
-## Part 1: Subscription Usage (Claude Max/Pro)
+## What This Skill Reports
 
-This tracks your **entire Claude account usage** — web, mobile, desktop, and all Claude Code sessions.
+### Subscription Usage (Claude Max/Pro)
 
-### Setup
+Shows your **global account usage** across all devices — web, mobile, desktop, all Claude Code sessions everywhere.
 
-#### Step 1: Install Claude Code CLI in Container
+```
+**Account Limits (Claude Max):**
+• Session: 11% used (resets in 6h)
+• Week (all models): 30% used (resets Feb 6)
+• Week (Sonnet only): 1% used (resets Feb 7)
+```
+
+### API Usage (Optional)
+
+If you use the Anthropic API for your own applications:
+
+```
+**API Costs:**
+2026-01-30 : ██░░░░░░░░░░░░░░░░░░ $0.03
+2026-01-31 : ██░░░░░░░░░░░░░░░░░░ $0.03
+Monthly total: $0.89
+```
+
+---
+
+## Understanding the Two Systems
+
+Anthropic has **two completely separate billing systems**:
+
+| System | Billing | What It Tracks | How to Check |
+|--------|---------|----------------|--------------|
+| **Claude Max/Pro** | $20-200/month flat | All Claude usage (web, mobile, desktop) | `/usage` in Claude Code |
+| **Claude API** | Pay-per-token | Direct API calls from your apps | Admin API |
+
+**Important:** These systems don't share data. Subscription usage is tracked as % of limits, API usage is tracked as $ costs.
+
+---
+
+## Detailed Setup
+
+### Installing Claude Code in Docker
 
 ```bash
-# Get your container name
+# Find your OpenClaw container
 docker ps | grep openclaw
 
-# Install Claude Code CLI
+# Install Claude Code
 docker exec <container-name> npm install -g @anthropic-ai/claude-code
 
-# Install ccusage (optional - for OpenClaw's own session history)
+# (Optional) Install ccusage for container session history
 docker exec <container-name> npm install -g ccusage
 ```
 
-#### Step 2: Authenticate Claude Code
+### Authenticating Claude Code
 
-Claude Code requires OAuth authentication with your Claude account.
-
-**Option A: Interactive Auth (recommended)**
+**Option A: Interactive OAuth (recommended)**
 ```bash
-# Start interactive session in container
 docker exec -it <container-name> claude
 
-# Complete the OAuth flow:
 # 1. Select "Claude account with subscription"
-# 2. Open the URL it provides in your browser
+# 2. Open the URL in your browser
 # 3. Sign in and copy the code
-# 4. Paste the code back into the terminal
-# 5. Exit with /exit
+# 4. Paste the code
+# 5. Type /exit
 ```
 
-**Option B: Copy Auth from Host**
-
-If you've already authenticated Claude Code on your host machine:
+**Option B: Copy from Host**
 ```bash
-# Copy auth files into container
+# If already authenticated on host machine
 docker cp ~/.claude <container-name>:/home/node/.claude
 ```
 
-#### Step 3: Make Auth Persistent
+### Making Auth Persistent
 
-Auth files are lost when the container restarts. To persist them:
+Auth files are lost on container restart. To persist:
 
-**Option A: Volume Mount (recommended)**
-
-Add to your docker-compose.yml:
+**Volume Mount (recommended):**
 ```yaml
+# docker-compose.yml
 volumes:
-  - /path/on/host/.claude:/home/node/.claude
+  - ./claude-auth:/home/node/.claude
 ```
 
-**Option B: Re-copy After Restart**
+**Or re-copy after restart.**
 
-Re-run the docker cp command after each restart.
+### Admin API Key (for API costs)
 
-### Getting Account Usage
-
-The `/usage` command in Claude Code shows your **global account usage** across all devices and sessions.
-
-**Important:** `/usage` only works interactively — it cannot be called via `claude -p "..."`.
-
-#### Interactive Method (for testing)
-
-```bash
-docker exec -it <container-name> claude
-# Then type: /usage
-# You'll see:
-#   Current session: X% used
-#   Current week (all models): X% used
-#   Current week (Sonnet only): X% used
-```
-
-#### Automated Method (for OpenClaw cron jobs)
-
-OpenClaw can run Claude Code interactively using PTY mode:
-
-```javascript
-// Start claude with PTY
-exec({ command: "claude", pty: true, yieldMs: 5000 })
-
-// Send /usage command
-process({ action: "send-keys", sessionId: "...", literal: "/usage" })
-process({ action: "send-keys", sessionId: "...", keys: ["Enter"] })
-
-// Poll for output
-process({ action: "poll", sessionId: "..." })
-
-// Parse the percentages from output
-// Exit cleanly
-process({ action: "send-keys", sessionId: "...", literal: "/exit" })
-```
-
-### What About ccusage?
-
-`ccusage` reads local JSONL session files from `~/.claude/projects/`. This only shows usage from **Claude Code sessions initiated from that specific machine/container**.
-
-- If OpenClaw uses Claude Code for its own "vibe coding" tasks, ccusage will show that usage
-- It does **NOT** show your global account usage (web, mobile, other devices)
-- For global account usage, use the `/usage` command as described above
+1. Go to https://console.anthropic.com → Settings → Admin API Keys
+2. Create a new key
+3. Add to your environment: `CLAUDE_ADMIN_KEY=sk-ant-admin-...`
 
 ---
 
-## Part 2: API Usage (Optional)
+## How the Skill Works
 
-If you also use the Anthropic API directly (for your own applications, integrations, etc.), you can include that in your reports.
+### Getting Subscription Usage
 
-### Setup
+The `/usage` command in Claude Code shows global account limits, but it **only works interactively**. The skill runs Claude Code with PTY:
 
-1. Get an **Admin API Key** from https://console.anthropic.com → Settings → Admin API Keys
-2. Add to your OpenClaw environment:
-```bash
-CLAUDE_ADMIN_KEY=sk-ant-admin-...
+```javascript
+// Start claude with PTY
+exec({ command: "claude", pty: true })
+
+// Send /usage command
+process({ action: "send-keys", literal: "/usage" })
+process({ action: "send-keys", keys: ["Enter"] })
+
+// Parse output for percentages
+// Exit cleanly with /exit
 ```
 
 ### Getting API Costs
@@ -142,27 +155,20 @@ curl "https://api.anthropic.com/v1/organizations/cost_report?starting_at=YYYY-MM
   --header "x-api-key: $CLAUDE_ADMIN_KEY"
 ```
 
-Or use the bundled script:
-```bash
-./scripts/usage-report.sh [days]
-```
+### What About ccusage?
 
-### Known Issue: 100x Bug
+`ccusage` reads local session files from `~/.claude/projects/`. This only shows sessions **from that specific container** — useful if your OpenClaw agent does its own Claude Code work ("vibe coding").
 
-The Admin API may return values ~100x higher than the Console shows. If your numbers seem inflated, divide by 100. The Console is authoritative.
+For global account usage, the skill uses `/usage`.
 
 ---
 
-## Setting Up Automated Reporting
+## Setting Up Automated Reporting (Optional)
 
-### OpenClaw Cron Job for Daily Reports
+Want daily/weekly reports? Set up a cron job:
 
-Add a cron job that:
-1. Runs Claude Code interactively to get `/usage`
-2. Optionally pulls API costs
-3. Posts a formatted report to your preferred channel
+### Daily Report Example
 
-Example cron job payload:
 ```json
 {
   "name": "Claude Usage - Daily",
@@ -170,7 +176,23 @@ Example cron job payload:
   "sessionTarget": "isolated",
   "payload": {
     "kind": "agentTurn",
-    "message": "Generate Claude usage report.\n\n1. Run 'claude' with PTY, send '/usage', capture output for account limits\n2. If CLAUDE_ADMIN_KEY is set, hit Admin API for API costs\n3. Format report with ASCII charts\n4. Post to channel\n\nReport format:\n📊 Claude Usage Report\n\n**Account Limits:**\n• Session: X% used\n• Week (all models): X% used\n\n**API Costs (if applicable):**\n[date] : ████████░░ $X.XX",
+    "message": "Generate Claude usage report and post to #briefs channel.",
+    "deliver": true,
+    "channel": "discord"
+  }
+}
+```
+
+### Weekly Report Example
+
+```json
+{
+  "name": "Claude Usage - Weekly",
+  "schedule": {"kind": "cron", "expr": "0 16 * * 1", "tz": "UTC"},
+  "sessionTarget": "isolated",
+  "payload": {
+    "kind": "agentTurn", 
+    "message": "Generate weekly Claude usage report with trends.",
     "deliver": true,
     "channel": "discord"
   }
@@ -181,7 +203,7 @@ Example cron job payload:
 
 ## Report Format
 
-Use ASCII bar charts (more readable than tables):
+The skill uses ASCII bar charts (readable in Discord/Slack/chat):
 
 ```
 📊 Claude Usage Report — 2026-02-01
@@ -191,44 +213,35 @@ Use ASCII bar charts (more readable than tables):
 • Week (all models): 30% used (resets Feb 6)
 • Week (Sonnet only): 1% used (resets Feb 7)
 
-**API Costs:** (if applicable)
+**API Costs:** (if configured)
+2026-01-30 : ██░░░░░░░░░░░░░░░░░░ $0.03
 2026-01-31 : ██░░░░░░░░░░░░░░░░░░ $0.03
-2026-02-01 : █░░░░░░░░░░░░░░░░░░░ $0.02
+
+**This Week Total:** $0.06
 ```
 
 ---
 
-## Quick Reference
+## Known Issues
 
-```bash
-# Check if Claude Code is installed
-claude --version
+### Admin API 100x Bug
+The Admin API may return values ~100x higher than Console shows. Divide by 100 if values seem inflated.
 
-# Check auth status
-ls -la ~/.claude/.credentials.json
+### /usage is Interactive Only
+Cannot be called via `claude -p "..."`. Must use PTY interaction.
 
-# Get global account usage (interactive)
-claude
-# then type: /usage
-
-# Get API costs (if using API)
-curl -s "https://api.anthropic.com/v1/organizations/cost_report?starting_at=2026-01-01" \
-  -H "anthropic-version: 2023-06-01" \
-  -H "x-api-key: $CLAUDE_ADMIN_KEY"
-
-# Get OpenClaw's own Claude Code session history
-ccusage daily --since 20260101
-```
+### Auth Persistence
+Container restarts lose auth unless volume-mounted.
 
 ---
 
-## File Locations
+## Files
 
 | File | Purpose |
 |------|---------|
-| `~/.claude/.credentials.json` | OAuth tokens for Claude Code |
-| `~/.claude/projects/` | Local session JSONL files (OpenClaw's own sessions) |
-| `CLAUDE_ADMIN_KEY` env var | Admin API access (for API cost reporting) |
+| `SKILL.md` | Skill instructions for OpenClaw |
+| `scripts/usage-report.sh` | Standalone script for API costs |
+| `~/.claude/.credentials.json` | OAuth tokens (in container) |
 
 ---
 
@@ -238,4 +251,4 @@ MIT
 
 ---
 
-Built for [OpenClaw](https://github.com/anthropics/openclaw) 🤖
+Built for [OpenClaw](https://openclaw.ai) 🤖
