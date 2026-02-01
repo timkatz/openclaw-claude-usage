@@ -1,6 +1,10 @@
 #!/bin/bash
-# Claude Max Usage Report Generator
+# Anthropic API Cost Report Generator
+# Tracks dollar costs from direct API usage (not Claude Max/Pro subscription limits)
 # Requires: CLAUDE_ADMIN_KEY environment variable
+#
+# NOTE: This reports API billing costs, NOT subscription usage percentages.
+# For Claude Max/Pro subscription limits, use the /usage command in Claude Code CLI.
 
 set -e
 
@@ -22,7 +26,7 @@ else
     END_DATE=$(date +%Y-%m-%d)
 fi
 
-echo "📊 Claude Max Utilization Report"
+echo "📊 Anthropic API Cost Report"
 echo "Period: $START_DATE to $END_DATE ($DAYS days)"
 echo ""
 

@@ -42,13 +42,23 @@ process({ action: "send-keys", sessionId: "...", keys: ["Enter"] })
 
 ## Getting API Usage
 
-If `CLAUDE_ADMIN_KEY` is set:
+If `CLAUDE_ADMIN_KEY` is set, use the included script:
+
+```bash
+./scripts/usage-report.sh [DAYS]
+```
+
+This generates an ASCII bar chart report of API costs over the specified period (default: 7 days).
+
+Or query the API directly:
 
 ```bash
 curl "https://api.anthropic.com/v1/organizations/cost_report?starting_at=YYYY-MM-DD" \
   --header "anthropic-version: 2023-06-01" \
   --header "x-api-key: $CLAUDE_ADMIN_KEY"
 ```
+
+**Note:** This tracks **API billing costs** ($ spent), NOT subscription usage limits. For Max/Pro subscription limits, use the `/usage` command above.
 
 **Known bug:** API may return 100x inflated values. Divide by 100 if needed.
 
