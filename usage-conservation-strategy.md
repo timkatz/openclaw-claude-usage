@@ -22,15 +22,15 @@
 | Threshold | Weekly % | Status | Action |
 |-----------|----------|--------|--------|
 | Safe | <50% | 🟢 | Normal operations |
-| Caution | 50-69% | 🟡 | Monitor trends, alert Tim |
-| Warning | 70-84% | 🟠 | Reduce non-essential work, alert Tim |
-| Danger | 85-100% | 🔴 | Conservation mode, alert Tim immediately |
+| Caution | 50-69% | 🟡 | Monitor trends, post alert |
+| Warning | 70-84% | 🟠 | Reduce non-essential work, post alert |
+| Danger | 85-100% | 🔴 | Conservation mode, immediate alert |
 
 ## Alert Protocol
 
 **When crossing threshold (50%, 70%, 85%):**
 
-Post to #system channel:
+Post to system channel:
 ```
 ⚠️ Claude Max Usage Alert
 
@@ -53,12 +53,12 @@ Post to #system channel:
 
 ### 🟡 Caution (50-69%)
 - **Monitor:** Daily trend analysis
-- **Alert:** Notify Tim when threshold crossed
-- **Continue:** Normal operations (we have fallback to Sonnet)
+- **Alert:** Post when threshold crossed
+- **Continue:** Normal operations (fallback to Sonnet available)
 - **Track:** What activities are driving usage
 
 ### 🟠 Warning (70-84%)
-- **Alert:** Post to #system immediately
+- **Alert:** Post to system channel immediately
 - **Reduce:**
   - Limit sub-agent spawns (max 3 concurrent instead of 8)
   - Shorter responses (concise over comprehensive)
@@ -66,11 +66,11 @@ Post to #system channel:
 - **Continue:**
   - Morning/evening briefs (essential)
   - Heartbeats (already on Sonnet)
-  - Critical client work
-- **Switch:** If vibe coding, use Sonnet explicitly for routine tasks
+  - Critical work
+- **Switch:** Use Sonnet explicitly for routine tasks if vibe coding
 
 ### 🔴 Danger (85-100%)
-- **Alert:** Post to #system + DM Tim immediately
+- **Alert:** Post to system channel immediately
 - **Pause:**
   - Nightly builds (disable cron)
   - Sub-agent spawns
@@ -96,17 +96,19 @@ Post to #system channel:
 - **Result:** Stay operational even when "All models" maxes out
 
 **Implications:**
-1. Less urgency when hitting 85%+ (we have Sonnet safety net)
-2. Conservation mode is about preserving Opus for interactive use, not avoiding total shutdown
-3. Heartbeats/sub-agents already on Sonnet → don't contribute to "All models" burnCONSERVATION IS ABOUT:
-- Preserving Opus quota for Tim's vibe coding sessions
-- Avoiding hitting Sonnet limit too (though we have 98% available)
+1. Less urgency when hitting 85%+ (Sonnet safety net available)
+2. Conservation mode preserves Opus for interactive use, not total shutdown
+3. Heartbeats/sub-agents already on Sonnet → don't contribute to "All models" burn
+
+**CONSERVATION IS ABOUT:**
+- Preserving Opus quota for interactive vibe coding sessions
+- Avoiding hitting Sonnet limit too (though 98% available)
 - Smart resource allocation, not panic mode
 
 ## Tracking & Reporting
 
 **Automated tracking:**
-- **Script:** `/home/node/clawd/scripts/usage-tracker.py`
+- **Script:** `usage-tracker.py`
 - **Update:** Daily at 6 AM PST (with morning brief)
 - **Alert:** When crossing thresholds (50%, 70%, 85%)
 - **Trend:** Weekly burn rate analysis
@@ -119,30 +121,28 @@ Post to #system channel:
 
 **Manual update when needed:**
 ```bash
-python3 /home/node/clawd/scripts/usage-tracker.py update <session%> <weekAll%> <weekSonnet%>
+python3 usage-tracker.py update <session%> <weekAll%> <weekSonnet%>
 ```
 
 **Check current status:**
 ```bash
-python3 /home/node/clawd/scripts/usage-tracker.py check
-python3 /home/node/clawd/scripts/usage-tracker.py trend
+python3 usage-tracker.py check
+python3 usage-tracker.py trend
 ```
 
-## PTY /usage Issue (Documented)
+## PTY Automation Solution
 
-**Problem:** Claude Code's `/usage` command requires interactive terminal and doesn't work with pipes or scripts.
+**How it works:**
+1. Start Claude Code with PTY: `exec(command="claude --dangerously-skip-permissions", pty=true, background=true)`
+2. Accept warning: `process(action="send-keys", sessionId=ID, keys=["Down","Enter"])`
+3. Run command: `process(action="write", sessionId=ID, data="/usage\n")`
+4. Get output: `process(action="log", sessionId=ID)`
+5. Parse percentages and update tracker
 
-**Attempted:**
-- `echo "/usage" | claude` → hangs
-- PTY automation → times out
-- Admin API → returns 404 (subscription accounts not supported)
-
-**Current Solution:**
-- Manual checks via Claude Code interactive session
-- Daily cron updates tracking file at 6 AM
-- Browser automation possible but not implemented (heavy)
-
-**Future:** Could implement browser-based scraping of claude.ai/settings/usage if needed.
+**Integration:**
+- Hourly heartbeat checks usage via PTY
+- Daily 6 AM report includes full breakdown
+- Threshold alerts post automatically
 
 ## What Actually Burns Quota
 
@@ -176,14 +176,14 @@ python3 /home/node/clawd/scripts/usage-tracker.py trend
 2. Monitor Sonnet pool (should be 98% available)
 3. Continue essential operations on Sonnet
 4. Preserve for:
-   - Tim's direct questions
+   - Direct user questions
    - Critical client work
    - Emergency tasks
 5. Wait for Thursday 9:59 PM reset
 
 **When both pools max out (unlikely):**
 1. Hard stop - truly blocked
-2. Only happens if we burn through 98% of Sonnet pool
+2. Only happens if burning through 98% of Sonnet pool
 3. At current rates: Would take weeks
 4. Emergency: Wait for weekly reset
 
@@ -192,15 +192,15 @@ python3 /home/node/clawd/scripts/usage-tracker.py trend
 **Thursday 10 PM PST (after weekly reset):**
 1. Verify reset via Claude Code `/usage`
 2. Update tracking: `usage-tracker.py update 0 0 0`
-3. Alert Tim in #briefs: "Weekly limit reset - full bandwidth restored"
+3. Post to system channel: "Weekly limit reset - full bandwidth restored"
 4. Resume normal operations
 5. Re-enable nightly builds if disabled
-6. Switch primary model back to Opus (optional - Tim decides)
+6. Switch primary model back to Opus (optional)
 
 ## Key Principle
 
 **Smart allocation > Panic mode**
 
-We have architectural resilience now. Use Opus when it matters, fall back to Sonnet when needed, conserve strategically, but don't shut down unnecessarily.
+Architectural resilience enables continuous operation. Use Opus when it matters, fall back to Sonnet when needed, conserve strategically, but don't shut down unnecessarily.
 
 The goal is **continuous operation** with intelligent resource management.

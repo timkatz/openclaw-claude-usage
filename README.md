@@ -4,13 +4,13 @@
 
 ## What This Does
 
-Tracks your Claude Max subscription usage across three dimensions:
+Tracks Claude Max subscription usage across three dimensions:
 1. **Session %** — Daily limit (resets 8am UTC)
 2. **Week (all models) %** — Combined Opus + Sonnet weekly quota
 3. **Week (Sonnet only) %** — Separate Sonnet-only pool
 
 **Key Features:**
-- ✅ Autonomous monitoring via browser automation (no manual checks)
+- ✅ Autonomous monitoring via PTY interaction with Claude Code
 - ✅ Threshold detection (50%, 70%, 85% alerts)
 - ✅ Historical trend analysis
 - ✅ Conservation mode recommendations
@@ -18,70 +18,72 @@ Tracks your Claude Max subscription usage across three dimensions:
 
 ## Quick Start
 
-### 1. Install Dependencies
+### 1. Install Claude Code
 
 ```bash
-# Python script needs no external deps (stdlib only)
-chmod +x scripts/usage-tracker.py
+# Install in container
+docker exec <container> npm install -g @anthropic-ai/claude-code
+
+# Authenticate (interactive)
+docker exec -it <container> claude
+# Follow OAuth flow, then /exit
 ```
 
-### 2. Set Up Browser Automation
-
-**Option A: Chrome Extension Relay (Recommended)**
-
-Uses OpenClaw's browser relay with your existing logged-in Chrome session:
-
-1. Open https://claude.ai/settings/usage in Chrome
-2. Click OpenClaw Browser Relay extension → Badge ON
-3. Run scraper via OpenClaw agent:
-   ```javascript
-   // Agent will use browser tool with profile="chrome"
-   ```
-
-**Option B: PTY Interactive (Manual)**
-
-Claude Code's `/usage` command works interactively but not in scripts:
+### 2. Set Up Usage Tracker
 
 ```bash
-# Interactive only (PTY required)
-docker exec -it openclaw-kai claude
-/usage
-# Manually update tracker with values shown
-python3 scripts/usage-tracker.py update <session%> <weekAll%> <weekSonnet%>
+chmod +x scripts/usage-tracker.py
 ```
 
 ### 3. Integrate into Heartbeat
 
-Add to `HEARTBEAT.md`:
+The system uses OpenClaw's PTY mode to interact with Claude Code:
 
-```markdown
-## Claude Max Usage Monitoring (EVERY HEARTBEAT)
+```javascript
+// Start Claude with PTY
+exec(command="claude --dangerously-skip-permissions", pty=true, background=true)
+// Returns sessionId
 
-**Check every heartbeat** (hourly during waking hours):
+// Accept warning (Down arrow, Enter)
+process(action="send-keys", sessionId=ID, keys=["Down","Enter"])
 
-```bash
-# Check for threshold alerts
-ALERT=$(python3 /home/node/clawd/scripts/usage-tracker.py check)
-if [[ "$ALERT" == ALERT:* ]]; then
-    # Post alert to #system
-fi
+// Run /usage command
+process(action="write", sessionId=ID, data="/usage\n")
+
+// Get output
+process(action="log", sessionId=ID)
+
+// Parse percentages and update tracker
+python3 usage-tracker.py update <session%> <weekAll%> <weekSonnet%>
+
+// Check thresholds
+python3 usage-tracker.py check
 ```
 
-See full protocol in HEARTBEAT.md template below.
-```
+### 4. Schedule Automated Checks
 
-### 4. Schedule Daily Updates
-
-Cron job to scrape usage daily:
-
+**Hourly Heartbeat:**
 ```json
 {
-  "name": "Claude Usage - Daily Check",
-  "schedule": {"kind": "cron", "expr": "0 14 * * *", "tz": "America/Los_Angeles"},
+  "name": "Heartbeat - Hourly",
+  "schedule": {"kind": "cron", "expr": "0 * * * *", "tz": "America/Los_Angeles"},
   "sessionTarget": "isolated",
   "payload": {
     "kind": "agentTurn",
-    "message": "Scrape claude.ai/settings/usage using browser relay and update usage tracker.",
+    "message": "Check Claude Max usage via PTY, update tracker, and alert if thresholds crossed."
+  }
+}
+```
+
+**Daily Report (6 AM):**
+```json
+{
+  "name": "Claude Usage - Daily",
+  "schedule": {"kind": "cron", "expr": "0 6 * * *", "tz": "America/Los_Angeles"},
+  "sessionTarget": "isolated",
+  "payload": {
+    "kind": "agentTurn",
+    "message": "Generate Claude usage daily report via PTY and post to #briefs.",
     "deliver": true
   }
 }
@@ -117,7 +119,7 @@ python3 usage-tracker.py history
 | Level | Weekly % | Status | Action |
 |-------|----------|--------|--------|
 | 🟢 Safe | <50% | Normal | All systems go |
-| 🟡 Caution | 50-69% | Monitor | Alert Tim, track trends |
+| 🟡 Caution | 50-69% | Monitor | Alert + track trends |
 | 🟠 Warning | 70-84% | Reduce | Limit sub-agents, shorter responses |
 | 🔴 Danger | 85-100% | Conserve | Minimal mode, rely on Sonnet fallback |
 
@@ -131,9 +133,9 @@ See `usage-conservation-strategy.md` for full playbook.
 - Proactive work encouraged
 
 **🟡 Caution (50-69%):**
-- Alert Tim when threshold crossed
+- Post alert when threshold crossed
 - Monitor trends daily
-- Continue normal operations (we have Sonnet fallback)
+- Continue normal operations (Sonnet fallback available)
 
 **🟠 Warning (70-84%):**
 - Reduce sub-agent spawns (max 3 instead of 8)
@@ -145,20 +147,20 @@ See `usage-conservation-strategy.md` for full playbook.
 - Minimal mode: essential operations only
 - Pause: nightly builds, sub-agents, proactive content
 - Shortened briefs
-- Rely on Sonnet fallback (98% available)
+- Rely on Sonnet fallback (separate pool)
 
 ### Fallback Architecture
 
-**Since Feb 5, 2026:**
+**Recommended setup:**
 - Primary: Sonnet 4.5
 - Fallback: Opus 4.5
 - Heartbeats/Sub-agents: Sonnet 4.5 (explicit)
 
-**Result:** Even if "All models" hits 100%, we can still operate on Sonnet's separate pool.
+**Result:** Even if "All models" hits 100%, system can still operate on Sonnet's separate pool.
 
 ## Alert Protocol
 
-When crossing threshold (50%, 70%, 85%), post to #system:
+When crossing threshold (50%, 70%, 85%), post to system channel:
 
 ```
 ⚠️ Claude Max Usage Alert
@@ -174,17 +176,49 @@ When crossing threshold (50%, 70%, 85%), post to #system:
 **Fallback safety net:** Sonnet pool at X% (98% available for fallback)
 ```
 
-## Why Browser Automation?
+## PTY Interaction Details
 
-**Problem:** Claude Code's `/usage` command requires true PTY (interactive terminal) and doesn't work with piped/scripted automation.
+Claude Code's `/usage` command requires interactive terminal, but OpenClaw's PTY mode with `send-keys` makes automation possible:
 
-**Solution:** Scrape https://claude.ai/settings/usage using OpenClaw's browser tool with Chrome extension relay. Uses Tim's existing logged-in session — no credentials needed.
+### Starting Claude Code
 
-**Benefits:**
-- ✅ Fully autonomous (no manual checks)
-- ✅ No credential management
-- ✅ Uses existing logged-in session
-- ✅ Reliable (page structure is stable)
+```bash
+# Start with PTY and background
+exec(command="claude --dangerously-skip-permissions", pty=true, background=true)
+# Returns sessionId
+```
+
+### Accepting Safety Warning
+
+```bash
+# Send Down arrow + Enter to accept warning
+process(action="send-keys", sessionId=ID, keys=["Down","Enter"])
+```
+
+### Running /usage Command
+
+```bash
+# Send the command with newline
+process(action="write", sessionId=ID, data="/usage\n")
+```
+
+### Getting Output
+
+```bash
+# Retrieve logs
+process(action="log", sessionId=ID)
+```
+
+### Parsing Output
+
+Look for lines like:
+```
+Session      : ████████░░░░░░░░░░░░ 40%
+Week (all)   : ██████░░░░░░░░░░░░░░ 32%
+Week (Sonnet): █░░░░░░░░░░░░░░░░░░░ 1%
+```
+
+Extract percentages and update tracker.
 
 ## Files
 
@@ -196,100 +230,27 @@ When crossing threshold (50%, 70%, 85%), post to #system:
 | `usage-conservation-strategy.md` | Full threshold playbook |
 | `SKILL.md` | Skill instructions for OpenClaw agents |
 
-## HEARTBEAT.md Template
-
-Add this to your `HEARTBEAT.md`:
-
-```markdown
-## Claude Max Usage Monitoring (HEARTBEAT CHECK)
-
-**Check every heartbeat** (hourly during waking hours):
-
-### How to Check
-
-**Browser automation (primary):**
-```bash
-# Agent uses browser tool with profile="chrome"
-# Scrapes claude.ai/settings/usage
-# Parses values and updates tracker
-```
-
-**Manual update fallback:**
-```bash
-# After running /usage in Claude Code interactive, update tracker:
-python3 /home/node/clawd/scripts/usage-tracker.py update <session%> <weekAll%> <weekSonnet%>
-```
-
-### What to Monitor
-- **Session %** — resets daily at 8am UTC
-- **Week (all) %** — Opus + Sonnet combined
-- **Week (Sonnet) %** — Sonnet-only pool (separate)
-
-### Threshold Detection
-
-```bash
-# During heartbeat, check if we crossed a threshold
-ALERT=$(python3 /home/node/clawd/scripts/usage-tracker.py check)
-if [[ "$ALERT" == ALERT:* ]]; then
-    # Post alert to #system
-    LEVEL=${ALERT#ALERT:}  # caution/warning/danger
-    # Generate and send alert message
-fi
-```
-
-### Alert Format
-
-When crossing threshold (50%, 70%, 85%), post to #system (1467262769362505845):
-
-```
-⚠️ Claude Max Usage Alert
-
-**Status:** [Caution/Warning/Danger]
-**Weekly (all models):** XX% used
-**Weekly (Sonnet only):** X% used
-**Days until reset:** X (Thursday 9:59 PM PST)
-**Burn rate:** ~X%/day
-
-**Recommendation:** [see conservation strategy]
-
-**Fallback safety net:** Sonnet pool at X% (98% available for fallback)
-```
-
-### Conservation Actions
-
-**🟢 Safe (<50%):** All systems go
-**🟡 Caution (50-69%):** Alert + monitor
-**🟠 Warning (70-84%):** Reduce sub-agents, shorter responses
-**🔴 Danger (85-100%):** Minimal mode, essentials only
-
-Full playbook: `memory/usage-conservation-strategy.md`
-```
-
 ## Known Issues
 
-### PTY /usage Limitation
+### Auth Persistence
 
-Claude Code's `/usage` command doesn't work with piped/scripted automation:
-
-```bash
-# ❌ This doesn't work
-echo "/usage" | claude
-
-# ❌ This doesn't work
-claude < usage.txt
-
-# ✅ This works (interactive PTY)
-docker exec -it container claude
-/usage
-```
-
-**Workaround:** Browser automation via OpenClaw relay (see above).
+Claude Code auth is lost on container restart. Either:
+- Volume mount `~/.claude/` directory
+- Re-authenticate after restart
 
 ### Weekly Reset Timing
 
 Usage resets **Thursday 9:59 PM PST** (Friday 5:59 AM UTC).
 
-Track days until reset in alerts to help Tim understand urgency.
+Track days until reset in alerts to understand urgency.
+
+### PTY Session Cleanup
+
+Remember to clean up PTY sessions after use:
+
+```bash
+process(action="kill", sessionId=ID)
+```
 
 ## License
 
